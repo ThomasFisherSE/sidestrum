@@ -15,6 +15,7 @@
 	let playing = $state(false);
 	let tapSyncMode = $state(false);
 	let refetching = $state(false);
+	let scrollSpeed = $state(10); // px/sec for autoscroll-only mode
 
 	// Flatten lines for global indexing
 	type FlatLine = { sectionIdx: number; lineIdx: number; section: string; line: Line; absIdx: number };
@@ -33,13 +34,19 @@
 	let tapStartTime = $state<number | null>(null);
 	let tapDurations = $state<number[]>([]);
 	let timerHandle: ReturnType<typeof setTimeout> | null = null;
+	let rafHandle: number | null = null;
+	let lastFrameTime = 0;
+	let scrollAccum = 0;
 
 	const effectiveBpm = $derived(song.bpm ?? 100);
 	const beatsPerBar = $derived(beatsPerLine(song.time_signature));
+	const hasTiming = $derived(
+		flatLines.length > 0 && flatLines.every((f) => typeof f.line.duration_beats === 'number')
+	);
 
 	function msForLine(line: FlatLine | undefined): number {
 		if (!line) return 0;
-		const beats = line.line.duration_beats ?? beatsPerBar;
+		const beats = line.line.duration_beats ?? 8;
 		return (beats / effectiveBpm) * 60_000;
 	}
 
@@ -57,14 +64,45 @@
 		}, ms);
 	}
 
+	function autoScrollTick(t: number) {
+		if (!playing || tapSyncMode) {
+			rafHandle = null;
+			return;
+		}
+		const dt = lastFrameTime ? (t - lastFrameTime) / 1000 : 0;
+		lastFrameTime = t;
+		scrollAccum += scrollSpeed * dt;
+		if (scrollAccum >= 1) {
+			const px = Math.floor(scrollAccum);
+			window.scrollBy(0, px);
+			scrollAccum -= px;
+		}
+		const atBottom = window.innerHeight + window.scrollY >= document.body.scrollHeight - 2;
+		if (atBottom) {
+			playing = false;
+			rafHandle = null;
+			return;
+		}
+		rafHandle = requestAnimationFrame(autoScrollTick);
+	}
+
 	function play() {
-		if (currentIdx >= flatLines.length - 1) currentIdx = 0;
 		playing = true;
-		scheduleNext();
+		if (hasTiming) {
+			if (currentIdx >= flatLines.length - 1) currentIdx = 0;
+			scheduleNext();
+		} else {
+			lastFrameTime = 0;
+			scrollAccum = 0;
+			rafHandle = requestAnimationFrame(autoScrollTick);
+		}
 	}
 	function pause() {
 		playing = false;
 		if (timerHandle) clearTimeout(timerHandle);
+		timerHandle = null;
+		if (rafHandle) cancelAnimationFrame(rafHandle);
+		rafHandle = null;
 	}
 	function togglePlay() {
 		if (tapSyncMode) return;
@@ -73,6 +111,7 @@
 	function restart() {
 		pause();
 		currentIdx = 0;
+		window.scrollTo({ top: 0, behavior: 'smooth' });
 	}
 
 	function onTap() {
@@ -326,6 +365,15 @@
 			/>
 		</div>
 
+		{#if !hasTiming}
+			<div class="group">
+				<label>Scroll</label>
+				<button onclick={() => (scrollSpeed = Math.max(1, scrollSpeed - 1))}>−</button>
+				<span class="val mono">{scrollSpeed}</span>
+				<button onclick={() => (scrollSpeed = Math.min(100, scrollSpeed + 1))}>+</button>
+			</div>
+		{/if}
+
 		<div class="group end">
 			<button class:active={tapSyncMode} onclick={toggleTapSync}>
 				{tapSyncMode ? 'Tapping… (spacebar)' : 'Tap-sync'}
@@ -348,7 +396,7 @@
 				<h2 class="section-name">{section.name}</h2>
 				{#each section.lines as line, li (li)}
 					{@const absIdx = flatLines.findIndex((f) => f.sectionIdx === si && f.lineIdx === li)}
-					{@const isCurrent = playing || tapSyncMode ? absIdx === currentIdx : false}
+					{@const isCurrent = (hasTiming && playing) || tapSyncMode ? absIdx === currentIdx : false}
 					<div class="line" class:current={isCurrent} data-abs={absIdx}>
 						<div class="chord-row">
 							{#each line.chords as c, ci (ci)}
