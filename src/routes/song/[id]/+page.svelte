@@ -60,6 +60,7 @@
 				scheduleNext();
 			} else {
 				playing = false;
+				playMode = 'idle';
 			}
 		}, ms);
 	}
@@ -80,33 +81,50 @@
 		const atBottom = window.innerHeight + window.scrollY >= document.body.scrollHeight - 2;
 		if (atBottom) {
 			playing = false;
+			playMode = 'idle';
 			rafHandle = null;
 			return;
 		}
 		rafHandle = requestAnimationFrame(autoScrollTick);
 	}
 
-	function play() {
+	type PlayMode = 'idle' | 'along' | 'scroll';
+	let playMode = $state<PlayMode>('idle');
+
+	function playAlong() {
+		if (!hasTiming || tapSyncMode) return;
+		pause();
 		playing = true;
-		if (hasTiming) {
-			if (currentIdx >= flatLines.length - 1) currentIdx = 0;
-			scheduleNext();
-		} else {
-			lastFrameTime = 0;
-			scrollAccum = 0;
-			rafHandle = requestAnimationFrame(autoScrollTick);
-		}
+		playMode = 'along';
+		if (currentIdx >= flatLines.length - 1) currentIdx = 0;
+		scheduleNext();
+	}
+	function autoScroll() {
+		if (tapSyncMode) return;
+		pause();
+		playing = true;
+		playMode = 'scroll';
+		lastFrameTime = 0;
+		scrollAccum = 0;
+		rafHandle = requestAnimationFrame(autoScrollTick);
 	}
 	function pause() {
 		playing = false;
+		playMode = 'idle';
 		if (timerHandle) clearTimeout(timerHandle);
 		timerHandle = null;
 		if (rafHandle) cancelAnimationFrame(rafHandle);
 		rafHandle = null;
 	}
-	function togglePlay() {
+	function toggleDefault() {
 		if (tapSyncMode) return;
-		playing ? pause() : play();
+		if (playing) {
+			pause();
+		} else if (hasTiming) {
+			playAlong();
+		} else {
+			autoScroll();
+		}
 	}
 	function restart() {
 		pause();
@@ -177,7 +195,7 @@
 		if (e.code === 'Space') {
 			e.preventDefault();
 			if (tapSyncMode) onTap();
-			else togglePlay();
+			else toggleDefault();
 		} else if (e.key === 'ArrowDown') {
 			e.preventDefault();
 			if (currentIdx < flatLines.length - 1) currentIdx += 1;
@@ -329,9 +347,21 @@
 
 	<div class="controls">
 		<div class="group">
-			<button class="primary" onclick={togglePlay} disabled={tapSyncMode}>
-				{playing ? '⏸ Pause' : '▶ Play'}
-			</button>
+			{#if playing}
+				<button class="primary" onclick={pause}>⏸ Pause</button>
+			{:else}
+				<button
+					class="primary"
+					onclick={playAlong}
+					disabled={!hasTiming || tapSyncMode}
+					title={hasTiming ? 'Play along using tap-synced timing' : 'Tap-sync the song first to enable Play Along'}
+				>▶ Play Along</button>
+				<button
+					onclick={autoScroll}
+					disabled={tapSyncMode}
+					title="Smooth scroll the page"
+				>↓ Autoscroll</button>
+			{/if}
 			<button onclick={restart} title="Restart (r)">↺</button>
 		</div>
 
