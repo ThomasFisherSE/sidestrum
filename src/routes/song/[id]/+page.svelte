@@ -38,6 +38,26 @@
 	let lastFrameTime = 0;
 	let scrollAccum = 0;
 
+	// Unique chords used in the song, in first-appearance order, post transpose+capo
+	const uniqueChords = $derived.by<string[]>(() => {
+		const seen = new Set<string>();
+		const out: string[] = [];
+		for (const section of song.sections) {
+			for (const line of section.lines) {
+				for (const c of line.chords) {
+					const d = displayChord(c.chord, capo, transpose);
+					if (!seen.has(d)) {
+						seen.add(d);
+						out.push(d);
+					}
+				}
+			}
+		}
+		return out;
+	});
+
+	let chordsOpen = $state(false);
+
 	const effectiveBpm = $derived(song.bpm ?? 100);
 	const beatsPerBar = $derived(beatsPerLine(song.time_signature));
 	const hasTiming = $derived(
@@ -414,6 +434,23 @@
 		</div>
 	</div>
 
+	{#if uniqueChords.length > 0}
+		<details class="chords-panel" bind:open={chordsOpen}>
+			<summary>
+				<span class="chords-panel-title">Chord charts</span>
+				<span class="chords-panel-count">{uniqueChords.length}</span>
+			</summary>
+			<div class="chords-grid">
+				{#each uniqueChords as c (c)}
+					<div class="chord-card">
+						<ChordDiagram chord={c} />
+						<div class="chord-card-name mono">{c}</div>
+					</div>
+				{/each}
+			</div>
+		</details>
+	{/if}
+
 	{#if tapSyncMode}
 		<div class="banner">
 			Tap <kbd>space</kbd> on the beat of each line change. Line {currentIdx + 1} / {flatLines.length}.
@@ -653,6 +690,66 @@
 		box-shadow: 0 4px 20px rgba(0, 0, 0, 0.5);
 	}
 	.chord-tooltip-name {
+		color: var(--chord);
+		font-size: 0.85rem;
+		font-weight: 600;
+		margin-top: 0.2rem;
+	}
+	.chords-panel {
+		background: var(--bg-2);
+		border: 1px solid var(--border);
+		border-radius: 8px;
+		margin-bottom: 1rem;
+		overflow: hidden;
+	}
+	.chords-panel > summary {
+		list-style: none;
+		cursor: pointer;
+		padding: 0.6rem 1rem;
+		display: flex;
+		align-items: center;
+		gap: 0.6rem;
+		user-select: none;
+	}
+	.chords-panel > summary::-webkit-details-marker {
+		display: none;
+	}
+	.chords-panel > summary::before {
+		content: '▸';
+		color: var(--muted);
+		font-size: 0.75rem;
+		transition: transform 0.15s;
+	}
+	.chords-panel[open] > summary::before {
+		transform: rotate(90deg);
+	}
+	.chords-panel-title {
+		font-size: 0.85rem;
+		font-weight: 600;
+	}
+	.chords-panel-count {
+		background: var(--bg-3);
+		color: var(--muted);
+		font-family: var(--mono);
+		font-size: 0.72rem;
+		padding: 0.05rem 0.45rem;
+		border-radius: 10px;
+	}
+	.chords-grid {
+		display: grid;
+		grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+		gap: 0.75rem;
+		padding: 0 1rem 1rem;
+	}
+	.chord-card {
+		display: flex;
+		flex-direction: column;
+		align-items: center;
+		padding: 0.4rem;
+		background: var(--bg-3);
+		border-radius: 6px;
+	}
+	.chord-card-name {
 		color: var(--chord);
 		font-size: 0.85rem;
 		font-weight: 600;
