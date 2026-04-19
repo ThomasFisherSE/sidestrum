@@ -513,9 +513,11 @@
 			<button onclick={openEditChordPro} title="Edit raw ChordPro">
 				✎ Edit ChordPro
 			</button>
-			<button onclick={refetch} disabled={refetching} title="Re-fetch from web">
-				{refetching ? 'Fetching…' : '↻ Refetch'}
-			</button>
+			{#if data.source?.available}
+				<button onclick={refetch} disabled={refetching} title="Re-fetch from web">
+					{refetching ? 'Fetching…' : '↻ Refetch'}
+				</button>
+			{/if}
 		</div>
 	</div>
 
