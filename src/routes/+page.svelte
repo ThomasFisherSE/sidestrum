@@ -1,7 +1,7 @@
 <script lang="ts">
 	import { goto, invalidateAll } from '$app/navigation';
 	import type { PageData } from './$types';
-	import type { SongCandidate } from '$lib/types';
+	import type { SongCandidate, SongSummary } from '$lib/types';
 
 	let { data }: { data: PageData } = $props();
 
@@ -19,6 +19,90 @@
 	let directTitle = $state('');
 	let directArtist = $state('');
 	let directFetching = $state(false);
+
+	type SortKey = 'recent' | 'added' | 'title' | 'artist' | 'key' | 'bpm';
+	let libQuery = $state('');
+	let sortBy = $state<SortKey>('recent');
+
+	function fuzzySubseq(q: string, text: string): number {
+		let qi = 0;
+		let score = 0;
+		let consecutive = 0;
+		for (let i = 0; i < text.length && qi < q.length; i++) {
+			if (text[i] === q[qi]) {
+				score += 1 + consecutive * 3;
+				consecutive++;
+				qi++;
+			} else {
+				consecutive = 0;
+			}
+		}
+		return qi === q.length ? score : 0;
+	}
+
+	function scoreSong(song: SongSummary, q: string): number {
+		if (!q) return 0;
+		const title = (song.title || '').toLowerCase();
+		const artist = (song.artist || '').toLowerCase();
+		const key = (song.key || '').toLowerCase();
+		const bpm = String(song.bpm ?? '');
+		if (title === q) return 10000;
+		if (title.startsWith(q)) return 6000 - title.length;
+		if (artist.startsWith(q)) return 4000 - artist.length;
+		if (title.includes(q)) return 2500;
+		if (artist.includes(q)) return 2000;
+		if (key === q) return 1800;
+		if (bpm === q) return 1600;
+		return fuzzySubseq(q, `${title} ${artist}`);
+	}
+
+	function cmpStr(a: string | null | undefined, b: string | null | undefined): number {
+		const av = (a ?? '').trim();
+		const bv = (b ?? '').trim();
+		if (!av && bv) return 1;
+		if (av && !bv) return -1;
+		return av.localeCompare(bv, undefined, { sensitivity: 'base' });
+	}
+
+	function sortSongs(songs: SongSummary[], key: SortKey): SongSummary[] {
+		const byTitleArtist = (a: SongSummary, b: SongSummary) =>
+			cmpStr(a.title, b.title) || cmpStr(a.artist, b.artist);
+		const out = [...songs];
+		switch (key) {
+			case 'recent':
+				return out.sort((a, b) => {
+					const at = a.last_played_at ?? a.created_at ?? '';
+					const bt = b.last_played_at ?? b.created_at ?? '';
+					return bt.localeCompare(at);
+				});
+			case 'added':
+				return out.sort((a, b) => (b.created_at ?? '').localeCompare(a.created_at ?? ''));
+			case 'title':
+				return out.sort((a, b) => cmpStr(a.title, b.title) || cmpStr(a.artist, b.artist));
+			case 'artist':
+				return out.sort((a, b) => cmpStr(a.artist, b.artist) || cmpStr(a.title, b.title));
+			case 'key':
+				return out.sort((a, b) => cmpStr(a.key, b.key) || byTitleArtist(a, b));
+			case 'bpm':
+				return out.sort((a, b) => {
+					const av = a.bpm ?? Number.POSITIVE_INFINITY;
+					const bv = b.bpm ?? Number.POSITIVE_INFINITY;
+					return av - bv || byTitleArtist(a, b);
+				});
+		}
+	}
+
+	const visibleSongs = $derived.by(() => {
+		const q = libQuery.trim().toLowerCase();
+		if (q) {
+			return data.songs
+				.map((s) => ({ s, score: scoreSong(s, q) }))
+				.filter((r) => r.score > 0)
+				.sort((a, b) => b.score - a.score)
+				.map((r) => r.s);
+		}
+		return sortSongs(data.songs, sortBy);
+	});
 
 	async function importText() {
 		if (!chordpro.trim()) return;
@@ -206,25 +290,55 @@
 	{/if}
 
 	<section class="library">
-		<h2>Library <span class="count">{data.songs.length}</span></h2>
+		<h2>
+			Library
+			<span class="count">
+				{#if libQuery.trim()}{visibleSongs.length}/{data.songs.length}{:else}{data.songs.length}{/if}
+			</span>
+		</h2>
 		{#if data.songs.length === 0}
 			<p class="empty">No songs yet. Paste or import one above.</p>
 		{:else}
-			<ul>
-				{#each data.songs as song (song.id)}
-					<li>
-						<a href="/song/{song.id}">
-							<div class="title">{song.title}</div>
-							<div class="meta">
-								<span class="artist">{song.artist}</span>
-								{#if song.key}<span class="pill">{song.key}</span>{/if}
-								{#if song.bpm}<span class="pill">{song.bpm} bpm</span>{/if}
-							</div>
-						</a>
-						<button class="ghost del" onclick={(e) => removeSong(song.id, e)} title="Delete">×</button>
-					</li>
-				{/each}
-			</ul>
+			<div class="controls">
+				<input
+					type="search"
+					class="find"
+					placeholder="Find by title, artist, key..."
+					bind:value={libQuery}
+				/>
+				<select
+					class="sort"
+					bind:value={sortBy}
+					disabled={!!libQuery.trim()}
+					title={libQuery.trim() ? 'Sorted by relevance while searching' : 'Sort library'}
+				>
+					<option value="recent">Recently played</option>
+					<option value="added">Recently added</option>
+					<option value="title">Title (A–Z)</option>
+					<option value="artist">Artist (A–Z)</option>
+					<option value="key">Key</option>
+					<option value="bpm">BPM</option>
+				</select>
+			</div>
+			{#if visibleSongs.length === 0}
+				<p class="empty">No matches for "{libQuery.trim()}"</p>
+			{:else}
+				<ul>
+					{#each visibleSongs as song (song.id)}
+						<li>
+							<a href="/song/{song.id}">
+								<div class="title">{song.title}</div>
+								<div class="meta">
+									<span class="artist">{song.artist}</span>
+									{#if song.key}<span class="pill">{song.key}</span>{/if}
+									{#if song.bpm}<span class="pill">{song.bpm} bpm</span>{/if}
+								</div>
+							</a>
+							<button class="ghost del" onclick={(e) => removeSong(song.id, e)} title="Delete">×</button>
+						</li>
+					{/each}
+				</ul>
+			{/if}
 		{/if}
 	</section>
 
@@ -386,6 +500,24 @@
 		font-size: 0.75rem;
 		margin-left: 0.3rem;
 	}
+	.controls {
+		display: flex;
+		gap: 0.5rem;
+		margin-bottom: 0.7rem;
+	}
+	.find { flex: 1; }
+	.sort {
+		background: var(--bg-2);
+		color: var(--text);
+		border: 1px solid var(--border);
+		border-radius: 6px;
+		padding: 0.6rem 0.7rem;
+		font-family: var(--sans);
+		font-size: 0.9rem;
+		cursor: pointer;
+	}
+	.sort:focus { outline: none; border-color: var(--accent); }
+	.sort:disabled { opacity: 0.5; cursor: not-allowed; }
 	.library ul {
 		list-style: none;
 		padding: 0;
