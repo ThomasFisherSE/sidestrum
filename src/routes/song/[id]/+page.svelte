@@ -181,7 +181,7 @@
 					const absIdx = flatLines.findIndex((f) => f.sectionIdx === si && f.lineIdx === li);
 					const dur = tapDurations[absIdx];
 					if (dur === undefined) return line;
-					const beats = Math.max(1, Math.round(dur / msPerBeat));
+					const beats = Math.max(0.05, dur / msPerBeat);
 					return { ...line, duration_beats: beats };
 				})
 			}))
