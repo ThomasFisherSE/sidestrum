@@ -15,8 +15,9 @@ export type Section = {
 };
 
 export type SongSource = {
-	type: 'paste' | 'import';
+	type: 'paste' | 'import' | 'plugin';
 	filename?: string;
+	sourceUrl?: string;
 	imported_at: string;
 };
 
@@ -39,3 +40,10 @@ export type SongSummary = Pick<
 	Song,
 	'id' | 'title' | 'artist' | 'key' | 'bpm' | 'last_played_at' | 'created_at'
 >;
+
+export type SongCandidate = {
+	title: string;
+	artist: string;
+	year?: number;
+	note?: string;
+};

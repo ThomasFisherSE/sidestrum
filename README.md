@@ -45,6 +45,18 @@ npm run dev
 
 Open the printed URL, paste a ChordPro song, click **Add to library**, then open it from the library to play.
 
+## Optional: search plugins
+
+The engine itself does not access the internet. If you want a search-and-fetch flow, you can write a source plugin and point the engine at it with the `SIDESTRUM_SOURCE` env var:
+
+```sh
+SIDESTRUM_SOURCE=./my-source.mjs npm run dev
+```
+
+A plugin is a module exporting `fetchSong(title, artist)` (required) and optionally `findCandidates(query)`. See [docs/plugins.md](docs/plugins.md) for the full interface and an example local-folder plugin.
+
+You are responsible for the terms of service and copyright status of any source your plugin queries. Do not publish plugins that scrape services without permission.
+
 ## Built with
 
 - [SvelteKit](https://kit.svelte.dev/) 5
