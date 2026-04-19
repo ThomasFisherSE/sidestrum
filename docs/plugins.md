@@ -44,6 +44,8 @@ SIDESTRUM_SOURCE=./plugins/my-source.mjs npm run dev
 
 The module is loaded once, lazily, on first request. Restart the dev server after editing the plugin file.
 
+Plugins can read their own config from `process.env`. Any variables defined in sidestrum's `.env` are mirrored into `process.env` before the plugin is imported, so a plugin can read `process.env.MY_API_KEY` without knowing anything about SvelteKit's env loading.
+
 ## Example: local folder plugin
 
 A minimal plugin that reads `.cho` files from a directory. No networking, no copyright concerns: a demonstration of the contract.

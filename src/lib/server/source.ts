@@ -20,6 +20,12 @@ async function load(): Promise<LoadResult> {
 	const path = env.SIDESTRUM_SOURCE;
 	if (!path) return (cached = { ok: false });
 
+	for (const [k, v] of Object.entries(env)) {
+		if (process.env[k] === undefined && typeof v === 'string') {
+			process.env[k] = v;
+		}
+	}
+
 	try {
 		const specifier = resolveSpecifier(path);
 		const mod = await import(/* @vite-ignore */ specifier);
