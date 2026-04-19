@@ -73,6 +73,7 @@ export type Song = {
 	meta?: Record<string, string>;
 	sections: Section[];
 	chord_defs?: ChordDef[];
+	chordpro?: string;
 	source: SongSource;
 	user_edits: Partial<Song> | null;
 	created_at: string;

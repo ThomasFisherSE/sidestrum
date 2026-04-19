@@ -5,8 +5,10 @@ import type {
 	LyricLine,
 	Section,
 	SectionKind,
+	Song,
 	TabLine
 } from './types';
+import { isLyricLine } from './types';
 
 export function parseChordProLine(raw: string): LyricLine {
 	const chords: { pos: number; chord: string }[] = [];
@@ -458,4 +460,111 @@ function inferKindFromLabel(label: string): SectionKind {
 	if (l.startsWith('bridge')) return 'bridge';
 	if (l.startsWith('tab') || l.startsWith('solo')) return 'other';
 	return 'other';
+}
+
+const SECTION_ENV_DIRECTIVES: Record<Exclude<SectionKind, 'other'>, { start: string; end: string; default: string }> = {
+	chorus: { start: 'start_of_chorus', end: 'end_of_chorus', default: 'Chorus' },
+	verse: { start: 'start_of_verse', end: 'end_of_verse', default: 'Verse' },
+	bridge: { start: 'start_of_bridge', end: 'end_of_bridge', default: 'Bridge' },
+	tab: { start: 'start_of_tab', end: 'end_of_tab', default: 'Tab' },
+	grid: { start: 'start_of_grid', end: 'end_of_grid', default: 'Grid' }
+};
+
+function reconstructLyricLine(line: LyricLine): string {
+	if (line.chords.length === 0) return line.lyric;
+	const chordsByPos = new Map<number, string[]>();
+	let lastPos = 0;
+	for (const c of line.chords) {
+		const arr = chordsByPos.get(c.pos) ?? [];
+		arr.push(c.chord);
+		chordsByPos.set(c.pos, arr);
+		if (c.pos > lastPos) lastPos = c.pos;
+	}
+	const totalCols = Math.max(line.lyric.length, lastPos);
+	let out = '';
+	for (let i = 0; i <= totalCols; i++) {
+		const at = chordsByPos.get(i);
+		if (at) for (const ch of at) out += `[${ch}]`;
+		if (i < line.lyric.length) out += line.lyric[i];
+		else if (i < totalCols) out += ' ';
+	}
+	return out;
+}
+
+function reconstructLine(line: Line): string {
+	if (isLyricLine(line)) return reconstructLyricLine(line);
+	if (line.type === 'comment') {
+		const dir = line.style === 'italic' ? 'comment_italic' : line.style === 'box' ? 'comment_box' : 'comment';
+		return `{${dir}: ${line.text}}`;
+	}
+	if (line.type === 'tab') return line.text;
+	if (line.type === 'chorus_ref') return line.label ? `{chorus: ${line.label}}` : '{chorus}';
+	return '';
+}
+
+export function reconstructChordPro(song: Song): string {
+	const out: string[] = [];
+	const push = (s: string) => out.push(s);
+
+	if (song.title) push(`{title: ${song.title}}`);
+	if (song.artist) push(`{artist: ${song.artist}}`);
+	if (song.subtitle) push(`{subtitle: ${song.subtitle}}`);
+	if (song.composer) push(`{composer: ${song.composer}}`);
+	if (song.lyricist) push(`{lyricist: ${song.lyricist}}`);
+	if (song.album) push(`{album: ${song.album}}`);
+	if (song.year !== undefined) push(`{year: ${song.year}}`);
+	if (song.copyright) push(`{copyright: ${song.copyright}}`);
+	if (song.key) push(`{key: ${song.key}}`);
+	if (song.bpm !== null && song.bpm !== undefined) push(`{tempo: ${song.bpm}}`);
+	if (song.time_signature) push(`{time: ${song.time_signature}}`);
+	if (song.capo) push(`{capo: ${song.capo}}`);
+	if (song.duration) push(`{duration: ${song.duration}}`);
+	if (song.meta) {
+		for (const [k, v] of Object.entries(song.meta)) push(`{meta: ${k} ${v}}`);
+	}
+	if (song.chord_defs) {
+		for (const def of song.chord_defs) {
+			const frets = def.frets.map((f) => (f === -1 ? 'x' : String(f))).join(' ');
+			const fingers = def.fingers.map((f) => (f === 0 ? '-' : String(f))).join(' ');
+			push(`{define: ${def.name} base-fret ${def.baseFret} frets ${frets} fingers ${fingers}}`);
+		}
+	}
+	if (out.length > 0) push('');
+
+	for (const section of song.sections) {
+		const kind: SectionKind = section.kind ?? 'other';
+		if (kind === 'other') {
+			if (section.name && section.name !== 'Song') {
+				push(`{comment_box: ${section.name}}`);
+			}
+			for (const ln of section.lines) push(reconstructLine(ln));
+			push('');
+			continue;
+		}
+		const env = SECTION_ENV_DIRECTIVES[kind];
+		const labelArg = section.name && section.name !== env.default ? `: ${section.name}` : '';
+		push(`{${env.start}${labelArg}}`);
+		for (const ln of section.lines) push(reconstructLine(ln));
+		push(`{${env.end}}`);
+		push('');
+	}
+
+	return out.join('\n').replace(/\n+$/, '') + '\n';
+}
+
+// Best-effort copy of duration_beats from old → new lyric lines, by index across the
+// flattened lyric stream. Only applied when counts and lyric strings match exactly,
+// so re-tap-sync may be needed after structural edits.
+export function preserveDurations(parsed: ParsedChordPro, oldSong: Song): void {
+	const oldFlat: LyricLine[] = [];
+	for (const s of oldSong.sections) for (const l of s.lines) if (isLyricLine(l)) oldFlat.push(l);
+	const newFlat: LyricLine[] = [];
+	for (const s of parsed.sections) for (const l of s.lines) if (isLyricLine(l)) newFlat.push(l);
+	if (oldFlat.length !== newFlat.length) return;
+	for (let i = 0; i < newFlat.length; i++) {
+		const oldDur = oldFlat[i].duration_beats;
+		if (oldDur !== undefined && newFlat[i].lyric === oldFlat[i].lyric) {
+			newFlat[i].duration_beats = oldDur;
+		}
+	}
 }

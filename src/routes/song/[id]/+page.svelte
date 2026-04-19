@@ -7,6 +7,7 @@
 	import { displayChord, beatsPerLine } from '$lib/music';
 	import ChordDiagram from '$lib/ChordDiagram.svelte';
 	import { lookupChordPositions } from '$lib/chord-lookup';
+	import { parseChordPro, reconstructChordPro, preserveDurations } from '$lib/chordpro';
 
 	let { data }: { data: PageData } = $props();
 	let song = $state<Song>(data.song);
@@ -242,6 +243,10 @@
 	function onKey(e: KeyboardEvent) {
 		const target = e.target as HTMLElement;
 		if (target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable)) return;
+		if (editChordProOpen) {
+			if (e.key === 'Escape') closeEditChordPro();
+			return;
+		}
 		if (e.code === 'Space') {
 			e.preventDefault();
 			if (tapSyncMode) onTap();
@@ -318,6 +323,69 @@
 			headers: { 'content-type': 'application/json' },
 			body: JSON.stringify(s)
 		});
+	}
+
+	// Edit ChordPro modal
+	let editChordProOpen = $state(false);
+	let editChordProText = $state('');
+	let editChordProSaving = $state(false);
+	let editChordProError = $state<string | null>(null);
+
+	function openEditChordPro() {
+		editChordProText = song.chordpro ?? reconstructChordPro(song);
+		editChordProError = null;
+		editChordProOpen = true;
+	}
+
+	function closeEditChordPro() {
+		if (editChordProSaving) return;
+		editChordProOpen = false;
+	}
+
+	async function saveEditChordPro() {
+		const text = editChordProText;
+		if (!text.trim()) {
+			editChordProError = 'ChordPro is empty.';
+			return;
+		}
+		const parsed = parseChordPro(text);
+		if (parsed.sections.length === 0) {
+			editChordProError = 'No parseable sections found.';
+			return;
+		}
+		preserveDurations(parsed, song);
+		editChordProSaving = true;
+		editChordProError = null;
+		try {
+			const updated: Song = {
+				...song,
+				title: parsed.title ?? song.title,
+				artist: parsed.artist ?? song.artist,
+				subtitle: parsed.subtitle,
+				composer: parsed.composer,
+				lyricist: parsed.lyricist,
+				album: parsed.album,
+				year: parsed.year,
+				copyright: parsed.copyright,
+				key: parsed.key ?? null,
+				bpm: parsed.bpm ?? song.bpm,
+				time_signature: parsed.time_signature ?? song.time_signature,
+				capo: parsed.capo ?? 0,
+				duration: parsed.duration,
+				meta: parsed.meta,
+				sections: parsed.sections,
+				chord_defs: parsed.chord_defs,
+				chordpro: text
+			};
+			await persistSong(updated);
+			song = updated;
+			currentIdx = 0;
+			editChordProOpen = false;
+		} catch (e) {
+			editChordProError = e instanceof Error ? e.message : 'Save failed.';
+		} finally {
+			editChordProSaving = false;
+		}
 	}
 
 	async function refetch() {
@@ -441,6 +509,9 @@
 		<div class="group end">
 			<button class:active={tapSyncMode} onclick={toggleTapSync}>
 				{tapSyncMode ? 'Tapping… (spacebar)' : 'Tap-sync'}
+			</button>
+			<button onclick={openEditChordPro} title="Edit raw ChordPro">
+				✎ Edit ChordPro
 			</button>
 			<button onclick={refetch} disabled={refetching} title="Re-fetch from web">
 				{refetching ? 'Fetching…' : '↻ Refetch'}
@@ -614,6 +685,39 @@
 		</div>
 	{/if}
 </div>
+
+{#if editChordProOpen}
+	<div
+		class="modal-backdrop"
+		role="presentation"
+		onclick={(e) => { if (e.target === e.currentTarget) closeEditChordPro(); }}
+	>
+		<div class="modal" role="dialog" aria-modal="true" aria-label="Edit ChordPro">
+			<header class="modal-head">
+				<h2>Edit ChordPro</h2>
+				<button class="modal-close" onclick={closeEditChordPro} aria-label="Close" disabled={editChordProSaving}>×</button>
+			</header>
+			<p class="modal-hint">
+				Edit the raw ChordPro for this song. Tap-sync timing is preserved when lyric lines are unchanged; otherwise re-tap-sync after saving.
+			</p>
+			<textarea
+				class="modal-textarea"
+				bind:value={editChordProText}
+				spellcheck="false"
+				disabled={editChordProSaving}
+			></textarea>
+			{#if editChordProError}
+				<div class="modal-error">{editChordProError}</div>
+			{/if}
+			<div class="modal-actions">
+				<button class="ghost" onclick={closeEditChordPro} disabled={editChordProSaving}>Cancel</button>
+				<button class="primary" onclick={saveEditChordPro} disabled={editChordProSaving}>
+					{editChordProSaving ? 'Saving…' : 'Save'}
+				</button>
+			</div>
+		</div>
+	</div>
+{/if}
 
 <style>
 	.page {
@@ -976,5 +1080,83 @@
 	}
 	.pinned-bar .chord-card {
 		min-width: 90px;
+	}
+	.modal-backdrop {
+		position: fixed;
+		inset: 0;
+		background: rgba(0, 0, 0, 0.6);
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		padding: 1.5rem;
+		z-index: 50;
+	}
+	.modal {
+		background: var(--bg-2);
+		border: 1px solid var(--border);
+		border-radius: 10px;
+		width: 100%;
+		max-width: 800px;
+		max-height: 90vh;
+		display: flex;
+		flex-direction: column;
+		padding: 1.2rem;
+		box-shadow: 0 10px 40px rgba(0, 0, 0, 0.5);
+	}
+	.modal-head {
+		display: flex;
+		align-items: center;
+		justify-content: space-between;
+		margin-bottom: 0.4rem;
+	}
+	.modal-head h2 {
+		margin: 0;
+		font-size: 1.1rem;
+		letter-spacing: -0.01em;
+	}
+	.modal-close {
+		background: transparent;
+		border: none;
+		color: var(--muted);
+		font-size: 1.4rem;
+		line-height: 1;
+		padding: 0.1rem 0.5rem;
+		cursor: pointer;
+		border-radius: 4px;
+	}
+	.modal-close:hover { color: var(--accent); background: var(--bg-3); }
+	.modal-hint {
+		color: var(--muted);
+		font-size: 0.85rem;
+		margin: 0 0 0.6rem;
+	}
+	.modal-textarea {
+		flex: 1;
+		min-height: 50vh;
+		width: 100%;
+		font-family: var(--mono);
+		font-size: 0.9rem;
+		padding: 0.7rem;
+		background: var(--bg-3);
+		border: 1px solid var(--border);
+		border-radius: 6px;
+		color: inherit;
+		resize: vertical;
+	}
+	.modal-textarea:focus { outline: none; border-color: var(--accent); }
+	.modal-error {
+		background: rgba(247, 118, 142, 0.1);
+		border: 1px solid var(--danger);
+		color: var(--danger);
+		padding: 0.5rem 0.7rem;
+		border-radius: 6px;
+		margin-top: 0.6rem;
+		font-size: 0.85rem;
+	}
+	.modal-actions {
+		display: flex;
+		gap: 0.5rem;
+		justify-content: flex-end;
+		margin-top: 0.8rem;
 	}
 </style>

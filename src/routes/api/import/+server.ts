@@ -33,6 +33,7 @@ export const POST: RequestHandler = async ({ request }) => {
 		meta: parsed.meta,
 		sections: parsed.sections,
 		chord_defs: parsed.chord_defs,
+		chordpro,
 		source: {
 			type: filename ? 'import' : 'paste',
 			filename,
