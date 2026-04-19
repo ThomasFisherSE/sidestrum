@@ -292,54 +292,27 @@
 	}
 
 	async function refetch() {
-		if (!confirm('Re-fetch this song from the web? This overwrites current chords.')) return;
+		if (!confirm('Re-fetch this song from the web? You will review the new version before saving.')) return;
 		refetching = true;
 		try {
-			await fetch(`/api/library`, {
-				method: 'DELETE',
-				headers: { 'content-type': 'application/json' },
-				body: JSON.stringify({ id: song.id })
-			});
-			const res = await fetch('/api/fetch-song', {
+			const res = await fetch('/api/source/fetch', {
 				method: 'POST',
 				headers: { 'content-type': 'application/json' },
 				body: JSON.stringify({ title: song.title, artist: song.artist })
 			});
 			const body = await res.json();
 			if (!res.ok) {
-				const msg = body?.notFound
-					? `Couldn't find chords online: ${body.error}`
-					: `Refetch failed: ${body?.error ?? res.statusText}`;
-				alert(msg);
-				goto('/', { replaceState: true });
+				alert(`Refetch failed: ${body?.error ?? res.statusText}`);
 				return;
 			}
-			goto(`/song/${body.song.id}`, { replaceState: true, invalidateAll: true });
+			sessionStorage.setItem(
+				'sidestrum:pendingChordPro',
+				JSON.stringify({ chordpro: body.chordpro, sourceUrl: body.sourceUrl })
+			);
+			goto('/song/new');
 		} finally {
 			refetching = false;
 		}
-	}
-
-	// Render chord line above lyric using monospace alignment
-	function renderChordLine(line: Line): string {
-		if (!line.chords.length) return '';
-		const maxPos = Math.max(...line.chords.map((c) => c.pos));
-		const minLen = Math.max(maxPos + 8, line.lyric.length);
-		const chars: string[] = new Array(minLen).fill(' ');
-		const sortedChords = [...line.chords].sort((a, b) => a.pos - b.pos);
-		for (const c of sortedChords) {
-			const displayed = displayChord(c.chord, capo, transpose);
-			const pos = Math.max(0, Math.min(c.pos, chars.length - 1));
-			for (let i = 0; i < displayed.length; i++) {
-				if (pos + i < chars.length) chars[pos + i] = displayed[i];
-			}
-			// Ensure at least one space after chord
-			if (pos + displayed.length < chars.length && chars[pos + displayed.length] !== ' ') {
-				// push rest — extend array
-				chars.splice(pos + displayed.length, 0, ' ');
-			}
-		}
-		return chars.join('').trimEnd();
 	}
 
 	onMount(() => {

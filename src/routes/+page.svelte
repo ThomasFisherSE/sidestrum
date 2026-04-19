@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { goto } from '$app/navigation';
+	import { goto, invalidateAll } from '$app/navigation';
 	import type { PageData } from './$types';
 	import type { SongCandidate } from '$lib/types';
 
@@ -137,7 +137,7 @@
 			headers: { 'content-type': 'application/json' },
 			body: JSON.stringify({ id })
 		});
-		location.reload();
+		await invalidateAll();
 	}
 </script>
 
