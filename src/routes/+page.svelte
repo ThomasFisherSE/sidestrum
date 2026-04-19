@@ -78,6 +78,14 @@
 		}
 	}
 
+	function stashAndReview(chordpro: string, sourceUrl?: string) {
+		sessionStorage.setItem(
+			'sidestrum:pendingChordPro',
+			JSON.stringify({ chordpro, sourceUrl })
+		);
+		goto('/song/new');
+	}
+
 	async function pickCandidate(c: SongCandidate, idx: number) {
 		fetchingIdx = idx;
 		error = null;
@@ -89,7 +97,7 @@
 			});
 			const body = await res.json();
 			if (!res.ok) throw new Error(body.error ?? 'fetch failed');
-			goto(`/song/${body.song.id}`);
+			stashAndReview(body.chordpro, body.sourceUrl);
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'fetch failed';
 			fetchingIdx = null;
@@ -108,7 +116,7 @@
 			});
 			const body = await res.json();
 			if (!res.ok) throw new Error(body.error ?? 'fetch failed');
-			goto(`/song/${body.song.id}`);
+			stashAndReview(body.chordpro, body.sourceUrl);
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'fetch failed';
 			directFetching = false;
