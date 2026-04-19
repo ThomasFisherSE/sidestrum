@@ -1,6 +1,6 @@
 import guitarDb from '@tombatossals/chords-db/lib/guitar.json';
 
-type Position = {
+export type Position = {
 	frets: number[];
 	fingers: number[];
 	barres: number[];
@@ -94,11 +94,11 @@ function splitChord(chord: string): { root: string; suffix: string; bass: string
 	return { root: m[1], suffix: m[2] ?? '', bass: bass ?? null };
 }
 
-export function lookupChord(chord: string): Position | null {
+export function lookupChordPositions(chord: string): Position[] {
 	const { root, suffix, bass } = splitChord(chord);
 	const dbKey = rootToDbKey(root);
 	const entries = db.chords[dbKey];
-	if (!entries) return null;
+	if (!entries) return [];
 
 	const mappedSuffix = SUFFIX_MAP[suffix] ?? suffix;
 
@@ -106,13 +106,17 @@ export function lookupChord(chord: string): Position | null {
 	if (bass) {
 		const slashKey = `${mappedSuffix === 'major' ? '' : mappedSuffix}/${bass.replace('#', 'sharp')}`;
 		const slashEntry = entries.find((e) => e.suffix === slashKey);
-		if (slashEntry?.positions?.[0]) return slashEntry.positions[0];
+		if (slashEntry?.positions?.length) return slashEntry.positions;
 	}
 
 	const entry = entries.find((e) => e.suffix === mappedSuffix);
-	if (entry?.positions?.[0]) return entry.positions[0];
+	if (entry?.positions?.length) return entry.positions;
 
 	// Fallback: major/minor
 	const fallback = entries.find((e) => e.suffix === (suffix.startsWith('m') ? 'minor' : 'major'));
-	return fallback?.positions?.[0] ?? null;
+	return fallback?.positions ?? [];
+}
+
+export function lookupChord(chord: string): Position | null {
+	return lookupChordPositions(chord)[0] ?? null;
 }

@@ -1,10 +1,14 @@
 <script lang="ts">
-	import { lookupChord } from './chord-lookup';
+	import { lookupChordPositions, type Position } from './chord-lookup';
 	import type { ChordDef } from './types';
 
-	let { chord, customDefs }: { chord: string; customDefs?: ChordDef[] | null } = $props();
+	let {
+		chord,
+		customDefs,
+		variation = 0
+	}: { chord: string; customDefs?: ChordDef[] | null; variation?: number } = $props();
 
-	const custom = $derived.by(() => {
+	const custom = $derived.by<Position | null>(() => {
 		if (!customDefs) return null;
 		const hit = customDefs.find((d) => d.name === chord);
 		if (!hit) return null;
@@ -15,7 +19,12 @@
 			baseFret: hit.baseFret
 		};
 	});
-	const position = $derived(custom ?? lookupChord(chord));
+	const positions = $derived<Position[]>(custom ? [custom] : lookupChordPositions(chord));
+	const position = $derived(
+		positions.length > 0
+			? positions[Math.max(0, Math.min(variation, positions.length - 1))]
+			: null
+	);
 
 	const STRINGS = 6;
 	const FRETS = 4;

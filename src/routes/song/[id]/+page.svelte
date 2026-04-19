@@ -6,6 +6,7 @@
 	import { isLyricLine } from '$lib/types';
 	import { displayChord, beatsPerLine } from '$lib/music';
 	import ChordDiagram from '$lib/ChordDiagram.svelte';
+	import { lookupChordPositions } from '$lib/chord-lookup';
 
 	let { data }: { data: PageData } = $props();
 	let song = $state<Song>(data.song);
@@ -71,6 +72,20 @@
 	}
 
 	const pinnedList = $derived(uniqueChords.filter((c) => pinnedChords.has(c)));
+
+	let variationByChord = $state<Record<string, number>>({});
+
+	function variationCount(chord: string): number {
+		if (song.chord_defs?.some((d) => d.name === chord)) return 1;
+		return lookupChordPositions(chord).length;
+	}
+
+	function cycleVariation(chord: string, delta: number) {
+		const count = variationCount(chord);
+		if (count <= 1) return;
+		const cur = variationByChord[chord] ?? 0;
+		variationByChord = { ...variationByChord, [chord]: (cur + delta + count) % count };
+	}
 
 	const effectiveBpm = $derived(song.bpm ?? 100);
 	const beatsPerBar = $derived(beatsPerLine(song.time_signature));
@@ -436,6 +451,8 @@
 	{#if pinnedList.length > 0}
 		<div class="pinned-bar">
 			{#each pinnedList as c (c)}
+				{@const count = variationCount(c)}
+				{@const v = variationByChord[c] ?? 0}
 				<div class="chord-card">
 					<button
 						class="pin-btn pinned"
@@ -447,8 +464,26 @@
 							<path d="M16,12V4H17V2H7V4H8V12L6,14V16H11.2V22H12.8V16H18V14L16,12Z" />
 						</svg>
 					</button>
-					<ChordDiagram chord={c} customDefs={song.chord_defs ?? null} />
-					<div class="chord-card-name mono">{c}</div>
+					<ChordDiagram chord={c} customDefs={song.chord_defs ?? null} variation={v} />
+					<div class="chord-card-name-row">
+						{#if count > 1}
+							<button
+								class="var-btn"
+								onclick={() => cycleVariation(c, -1)}
+								title="Previous voicing ({v + 1}/{count})"
+								aria-label="Previous voicing of {c}"
+							>‹</button>
+						{/if}
+						<div class="chord-card-name mono">{c}</div>
+						{#if count > 1}
+							<button
+								class="var-btn"
+								onclick={() => cycleVariation(c, 1)}
+								title="Next voicing ({v + 1}/{count})"
+								aria-label="Next voicing of {c}"
+							>›</button>
+						{/if}
+					</div>
 				</div>
 			{/each}
 		</div>
@@ -464,6 +499,8 @@
 			<div class="chords-grid">
 				{#each uniqueChords as c (c)}
 					{@const isPinned = pinnedChords.has(c)}
+					{@const count = variationCount(c)}
+					{@const v = variationByChord[c] ?? 0}
 					<div class="chord-card">
 						<button
 							class="pin-btn"
@@ -476,8 +513,26 @@
 								<path d="M16,12V4H17V2H7V4H8V12L6,14V16H11.2V22H12.8V16H18V14L16,12Z" />
 							</svg>
 						</button>
-						<ChordDiagram chord={c} customDefs={song.chord_defs ?? null} />
-						<div class="chord-card-name mono">{c}</div>
+						<ChordDiagram chord={c} customDefs={song.chord_defs ?? null} variation={v} />
+						<div class="chord-card-name-row">
+							{#if count > 1}
+								<button
+									class="var-btn"
+									onclick={() => cycleVariation(c, -1)}
+									title="Previous voicing ({v + 1}/{count})"
+									aria-label="Previous voicing of {c}"
+								>‹</button>
+							{/if}
+							<div class="chord-card-name mono">{c}</div>
+							{#if count > 1}
+								<button
+									class="var-btn"
+									onclick={() => cycleVariation(c, 1)}
+									title="Next voicing ({v + 1}/{count})"
+									aria-label="Next voicing of {c}"
+								>›</button>
+							{/if}
+						</div>
 					</div>
 				{/each}
 			</div>
@@ -550,7 +605,11 @@
 
 	{#if hoverChord}
 		<div class="chord-tooltip" style="left: {hoverChord.x}px; top: {hoverChord.y - 130}px;">
-			<ChordDiagram chord={hoverChord.chord} customDefs={song.chord_defs ?? null} />
+			<ChordDiagram
+				chord={hoverChord.chord}
+				customDefs={song.chord_defs ?? null}
+				variation={variationByChord[hoverChord.chord] ?? 0}
+			/>
 			<div class="chord-tooltip-name mono">{hoverChord.chord}</div>
 		</div>
 	{/if}
@@ -843,11 +902,38 @@
 		background: var(--bg-3);
 		border-radius: 6px;
 	}
+	.chord-card-name-row {
+		display: flex;
+		align-items: center;
+		gap: 0.25rem;
+		margin-top: 0.2rem;
+	}
 	.chord-card-name {
 		color: var(--chord);
 		font-size: 0.85rem;
 		font-weight: 600;
-		margin-top: 0.2rem;
+	}
+	.var-btn {
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 1.1rem;
+		height: 1.1rem;
+		padding: 0;
+		background: transparent;
+		border: 1px solid var(--border);
+		border-radius: 3px;
+		color: var(--muted);
+		font-family: var(--sans);
+		font-size: 0.95rem;
+		line-height: 1;
+		cursor: pointer;
+		transition: color 0.12s, border-color 0.12s, background 0.12s;
+	}
+	.var-btn:hover {
+		color: var(--accent);
+		border-color: var(--accent);
+		background: var(--bg-2);
 	}
 	.pin-btn {
 		align-self: flex-end;
