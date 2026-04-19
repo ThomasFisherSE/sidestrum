@@ -4,6 +4,8 @@ A ChordPro performance player. Paste or drop a ChordPro file and get a scrollabl
 
 This is a player engine: bring your own ChordPro. Nothing is fetched from the internet.
 
+[sidestrum_example.webm](https://github.com/user-attachments/assets/8d6cfc1b-8fa6-4b55-8162-6620dbf07956)
+
 ## What it does
 
 - Parses ChordPro with inline `[C]` chord markers, spec-compliant `{...}` directives, and section environments.
