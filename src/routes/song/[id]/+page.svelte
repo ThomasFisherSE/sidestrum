@@ -2,7 +2,8 @@
 	import { onMount, tick } from 'svelte';
 	import { goto, invalidateAll } from '$app/navigation';
 	import type { PageData } from './$types';
-	import type { Song, Line } from '$lib/types';
+	import type { Song, LyricLine } from '$lib/types';
+	import { isLyricLine } from '$lib/types';
 	import { displayChord, beatsPerLine } from '$lib/music';
 	import ChordDiagram from '$lib/ChordDiagram.svelte';
 
@@ -17,12 +18,14 @@
 	let refetching = $state(false);
 	let scrollSpeed = $state(10); // px/sec for autoscroll-only mode
 
-	// Flatten lines for global indexing
-	type FlatLine = { sectionIdx: number; lineIdx: number; section: string; line: Line; absIdx: number };
+	// Flatten lyric lines only — these are the cursor/timing units. Comments, tabs,
+	// and chorus references render inline but the tap-sync cursor skips over them.
+	type FlatLine = { sectionIdx: number; lineIdx: number; section: string; line: LyricLine; absIdx: number };
 	const flatLines = $derived.by<FlatLine[]>(() => {
 		const out: FlatLine[] = [];
 		song.sections.forEach((section, sectionIdx) => {
 			section.lines.forEach((line, lineIdx) => {
+				if (!isLyricLine(line)) return;
 				out.push({ sectionIdx, lineIdx, section: section.name, line, absIdx: out.length });
 			});
 		});
@@ -44,6 +47,7 @@
 		const out: string[] = [];
 		for (const section of song.sections) {
 			for (const line of section.lines) {
+				if (!isLyricLine(line)) continue;
 				for (const c of line.chords) {
 					const d = displayChord(c.chord, capo, transpose);
 					if (!seen.has(d)) {
@@ -178,6 +182,7 @@
 			sections: song.sections.map((section, si) => ({
 				...section,
 				lines: section.lines.map((line, li) => {
+					if (!isLyricLine(line)) return line;
 					const absIdx = flatLines.findIndex((f) => f.sectionIdx === si && f.lineIdx === li);
 					const dur = tapDurations[absIdx];
 					if (dur === undefined) return line;
@@ -263,14 +268,13 @@
 					? s
 					: {
 							...s,
-							lines: s.lines.map((ln, j) =>
-								j !== li
-									? ln
-									: {
-											...ln,
-											chords: ln.chords.map((c, k) => (k !== ci ? c : { ...c, chord: editValue.trim() }))
-										}
-							)
+							lines: s.lines.map((ln, j) => {
+								if (j !== li || !isLyricLine(ln)) return ln;
+								return {
+									...ln,
+									chords: ln.chords.map((c, k) => (k !== ci ? c : { ...c, chord: editValue.trim() }))
+								};
+							})
 						}
 			)
 		};
@@ -336,8 +340,12 @@
 		<a href="/" class="back">← Library</a>
 		<div class="meta">
 			<h1>{song.title}</h1>
+			{#if song.subtitle}
+				<div class="subtitle">{song.subtitle}</div>
+			{/if}
 			<div class="sub">
 				<span>{song.artist}</span>
+				{#if song.album}<span class="album">· {song.album}{song.year ? ` (${song.year})` : ''}</span>{/if}
 				{#if song.key}<span class="pill">Key: {song.key}</span>{/if}
 				<span class="pill">{effectiveBpm} bpm</span>
 				<span class="pill">{song.time_signature}</span>
@@ -423,7 +431,7 @@
 			<div class="chords-grid">
 				{#each uniqueChords as c (c)}
 					<div class="chord-card">
-						<ChordDiagram chord={c} />
+						<ChordDiagram chord={c} customDefs={song.chord_defs ?? null} />
 						<div class="chord-card-name mono">{c}</div>
 					</div>
 				{/each}
@@ -439,45 +447,57 @@
 
 	<div class="sheet" bind:this={linesEl}>
 		{#each song.sections as section, si (si)}
-			<section class="section">
+			<section class="section" class:tab-section={section.kind === 'tab' || section.kind === 'grid'}>
 				<h2 class="section-name">{section.name}</h2>
 				{#each section.lines as line, li (li)}
-					{@const absIdx = flatLines.findIndex((f) => f.sectionIdx === si && f.lineIdx === li)}
-					{@const isCurrent = (hasTiming && playing) || tapSyncMode ? absIdx === currentIdx : false}
-					<div class="line" class:current={isCurrent} data-abs={absIdx}>
-						<div class="chord-row">
-							{#each line.chords as c, ci (ci)}
-								{@const displayed = displayChord(c.chord, capo, transpose)}
-								<span
-									class="chord"
-									style="left: {c.pos}ch"
-									onmouseenter={(e) => onChordEnter(e, displayed)}
-									onmouseleave={onChordLeave}
-									role="button"
-									tabindex="0"
-								>
-									{#if editing && editing.si === si && editing.li === li && editing.ci === ci}
-										<input
-											bind:this={editInputEl}
-											bind:value={editValue}
-											onblur={saveEdit}
-											onkeydown={(e) => {
-												if (e.key === 'Enter') saveEdit();
-												else if (e.key === 'Escape') cancelEdit();
-											}}
-											class="chord-input"
-										/>
-									{:else}
-										<button
-											class="chord-btn"
-											onclick={() => startEdit(si, li, ci, displayed)}
-										>{displayed}</button>
-									{/if}
-								</span>
-							{/each}
+					{#if isLyricLine(line)}
+						{@const absIdx = flatLines.findIndex((f) => f.sectionIdx === si && f.lineIdx === li)}
+						{@const isCurrent = (hasTiming && playing) || tapSyncMode ? absIdx === currentIdx : false}
+						<div class="line" class:current={isCurrent} data-abs={absIdx}>
+							<div class="chord-row">
+								{#each line.chords as c, ci (ci)}
+									{@const displayed = displayChord(c.chord, capo, transpose)}
+									<span
+										class="chord"
+										style="left: {c.pos}ch"
+										onmouseenter={(e) => onChordEnter(e, displayed)}
+										onmouseleave={onChordLeave}
+										role="button"
+										tabindex="0"
+									>
+										{#if editing && editing.si === si && editing.li === li && editing.ci === ci}
+											<input
+												bind:this={editInputEl}
+												bind:value={editValue}
+												onblur={saveEdit}
+												onkeydown={(e) => {
+													if (e.key === 'Enter') saveEdit();
+													else if (e.key === 'Escape') cancelEdit();
+												}}
+												class="chord-input"
+											/>
+										{:else}
+											<button
+												class="chord-btn"
+												onclick={() => startEdit(si, li, ci, displayed)}
+											>{displayed}</button>
+										{/if}
+									</span>
+								{/each}
+							</div>
+							<div class="lyric">{line.lyric || '\u00A0'}</div>
 						</div>
-						<div class="lyric">{line.lyric || '\u00A0'}</div>
-					</div>
+					{:else if line.type === 'comment'}
+						<div
+							class="comment"
+							class:italic={line.style === 'italic'}
+							class:boxed={line.style === 'box'}
+						>{line.text}</div>
+					{:else if line.type === 'tab'}
+						<pre class="tab-line">{line.text || '\u00A0'}</pre>
+					{:else if line.type === 'chorus_ref'}
+						<div class="chorus-ref">↻ {line.label ?? 'Chorus'}</div>
+					{/if}
 				{/each}
 			</section>
 		{/each}
@@ -485,7 +505,7 @@
 
 	{#if hoverChord}
 		<div class="chord-tooltip" style="left: {hoverChord.x}px; top: {hoverChord.y - 130}px;">
-			<ChordDiagram chord={hoverChord.chord} />
+			<ChordDiagram chord={hoverChord.chord} customDefs={song.chord_defs ?? null} />
 			<div class="chord-tooltip-name mono">{hoverChord.chord}</div>
 		</div>
 	{/if}
@@ -654,6 +674,53 @@
 	}
 	.lyric {
 		white-space: pre;
+	}
+	.comment {
+		padding: 0.3rem 0.6rem;
+		margin: 0.3rem 0;
+		color: var(--muted);
+		font-size: 0.95rem;
+	}
+	.comment.italic {
+		font-style: italic;
+	}
+	.comment.boxed {
+		border: 1px solid var(--border);
+		border-radius: 4px;
+		background: var(--bg-2);
+		padding: 0.4rem 0.7rem;
+	}
+	.chorus-ref {
+		padding: 0.3rem 0.6rem;
+		margin: 0.4rem 0;
+		color: var(--accent);
+		font-size: 0.9rem;
+		font-family: var(--sans);
+		text-transform: uppercase;
+		letter-spacing: 0.08em;
+	}
+	.tab-line {
+		margin: 0;
+		padding: 0.1rem 0.6rem;
+		white-space: pre;
+		font-family: var(--mono);
+		font-size: 0.95rem;
+	}
+	.tab-section {
+		background: var(--bg-2);
+		border: 1px solid var(--border);
+		border-radius: 6px;
+		padding: 0.6rem;
+		margin-bottom: 1.8rem;
+	}
+	.subtitle {
+		color: var(--muted);
+		font-size: 0.95rem;
+		margin-top: 0.15rem;
+	}
+	.album {
+		color: var(--muted);
+		font-size: 0.85rem;
 	}
 	.chord-tooltip {
 		position: fixed;

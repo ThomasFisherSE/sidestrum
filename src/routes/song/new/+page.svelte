@@ -2,6 +2,7 @@
 	import { onMount } from 'svelte';
 	import { goto } from '$app/navigation';
 	import { parseChordPro } from '$lib/chordpro';
+	import { isLyricLine } from '$lib/types';
 
 	let chordpro = $state('');
 	let saving = $state(false);
@@ -30,6 +31,7 @@
 		const s = new Set<string>();
 		for (const section of parsed.sections) {
 			for (const line of section.lines) {
+				if (!isLyricLine(line)) continue;
 				for (const c of line.chords) s.add(c.chord);
 			}
 		}
@@ -104,17 +106,29 @@
 					<p class="empty">Preview will appear as you type.</p>
 				{:else}
 					{#each parsed.sections as section, si (si)}
-						<div class="section">
+						<div class="section" class:tab-section={section.kind === 'tab' || section.kind === 'grid'}>
 							<h3 class="section-name">{section.name}</h3>
 							{#each section.lines as line, li (li)}
-								<div class="line">
-									<div class="chord-row">
-										{#each line.chords as c, ci (ci)}
-											<span class="chord" style="left: {c.pos}ch">{c.chord}</span>
-										{/each}
+								{#if isLyricLine(line)}
+									<div class="line">
+										<div class="chord-row">
+											{#each line.chords as c, ci (ci)}
+												<span class="chord" style="left: {c.pos}ch">{c.chord}</span>
+											{/each}
+										</div>
+										<div class="lyric">{line.lyric || '\u00A0'}</div>
 									</div>
-									<div class="lyric">{line.lyric || '\u00A0'}</div>
-								</div>
+								{:else if line.type === 'comment'}
+									<div
+										class="comment"
+										class:italic={line.style === 'italic'}
+										class:boxed={line.style === 'box'}
+									>{line.text}</div>
+								{:else if line.type === 'tab'}
+									<pre class="tab-line">{line.text || '\u00A0'}</pre>
+								{:else if line.type === 'chorus_ref'}
+									<div class="chorus-ref">↻ {line.label ?? 'Chorus'}</div>
+								{/if}
 							{/each}
 						</div>
 					{/each}
@@ -249,6 +263,36 @@
 	}
 	.lyric {
 		white-space: pre;
+	}
+	.comment {
+		padding: 0.2rem 0.4rem;
+		margin: 0.25rem 0;
+		color: var(--muted);
+	}
+	.comment.italic { font-style: italic; }
+	.comment.boxed {
+		border: 1px solid var(--border);
+		border-radius: 4px;
+		background: var(--bg-3);
+	}
+	.chorus-ref {
+		padding: 0.2rem 0.4rem;
+		margin: 0.3rem 0;
+		color: var(--accent);
+		font-family: var(--sans);
+		font-size: 0.85rem;
+		text-transform: uppercase;
+		letter-spacing: 0.08em;
+	}
+	.tab-line {
+		margin: 0;
+		white-space: pre;
+		padding: 0.1rem 0.4rem;
+	}
+	.tab-section {
+		background: var(--bg-3);
+		border-radius: 6px;
+		padding: 0.4rem;
 	}
 	.empty {
 		color: var(--muted);

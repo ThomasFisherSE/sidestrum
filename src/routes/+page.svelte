@@ -181,7 +181,7 @@
 		<textarea
 			class:dragging
 			bind:value={chordpro}
-			placeholder={'Paste ChordPro here, or drop a .cho file...\n\nTITLE: Example\nARTIST: You\nKEY: C\n\n# Verse\n[C]Hello [G]world, [Am]here\'s a [F]song'}
+			placeholder={'Paste ChordPro here, or drop a .cho file...\n\n{title: Example}\n{artist: You}\n{key: C}\n\n{start_of_verse}\n[C]Hello [G]world, [Am]here\'s a [F]song\n{end_of_verse}'}
 			rows="10"
 			ondrop={handleDrop}
 			ondragover={(e) => { e.preventDefault(); dragging = true; }}
