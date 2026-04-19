@@ -61,6 +61,16 @@
 	});
 
 	let chordsOpen = $state(false);
+	let pinnedChords = $state<Set<string>>(new Set());
+
+	function togglePin(chord: string) {
+		const next = new Set(pinnedChords);
+		if (next.has(chord)) next.delete(chord);
+		else next.add(chord);
+		pinnedChords = next;
+	}
+
+	const pinnedList = $derived(uniqueChords.filter((c) => pinnedChords.has(c)));
 
 	const effectiveBpm = $derived(song.bpm ?? 100);
 	const beatsPerBar = $derived(beatsPerLine(song.time_signature));
@@ -353,6 +363,7 @@
 		</div>
 	</header>
 
+	<div class="sticky-top">
 	<div class="controls">
 		<div class="group">
 			{#if playing}
@@ -422,6 +433,28 @@
 		</div>
 	</div>
 
+	{#if pinnedList.length > 0}
+		<div class="pinned-bar">
+			{#each pinnedList as c (c)}
+				<div class="chord-card">
+					<button
+						class="pin-btn pinned"
+						onclick={() => togglePin(c)}
+						title="Unpin"
+						aria-label="Unpin {c}"
+					>
+						<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" fill="currentColor">
+							<path d="M16,12V4H17V2H7V4H8V12L6,14V16H11.2V22H12.8V16H18V14L16,12Z" />
+						</svg>
+					</button>
+					<ChordDiagram chord={c} customDefs={song.chord_defs ?? null} />
+					<div class="chord-card-name mono">{c}</div>
+				</div>
+			{/each}
+		</div>
+	{/if}
+	</div>
+
 	{#if uniqueChords.length > 0}
 		<details class="chords-panel" bind:open={chordsOpen}>
 			<summary>
@@ -430,7 +463,19 @@
 			</summary>
 			<div class="chords-grid">
 				{#each uniqueChords as c (c)}
+					{@const isPinned = pinnedChords.has(c)}
 					<div class="chord-card">
+						<button
+							class="pin-btn"
+							class:pinned={isPinned}
+							onclick={() => togglePin(c)}
+							title={isPinned ? 'Unpin' : 'Pin to top'}
+							aria-label={isPinned ? `Unpin ${c}` : `Pin ${c} to top`}
+						>
+							<svg viewBox="0 0 24 24" width="14" height="14" aria-hidden="true" fill="currentColor">
+								<path d="M16,12V4H17V2H7V4H8V12L6,14V16H11.2V22H12.8V16H18V14L16,12Z" />
+							</svg>
+						</button>
 						<ChordDiagram chord={c} customDefs={song.chord_defs ?? null} />
 						<div class="chord-card-name mono">{c}</div>
 					</div>
@@ -548,6 +593,12 @@
 		font-family: var(--mono);
 		font-size: 0.75rem;
 	}
+	.sticky-top {
+		position: sticky;
+		top: 0.5rem;
+		z-index: 5;
+		margin-bottom: 1rem;
+	}
 	.controls {
 		display: flex;
 		flex-wrap: wrap;
@@ -556,10 +607,6 @@
 		background: var(--bg-2);
 		border: 1px solid var(--border);
 		border-radius: 8px;
-		margin-bottom: 1rem;
-		position: sticky;
-		top: 0.5rem;
-		z-index: 5;
 		align-items: center;
 	}
 	.group {
@@ -792,7 +839,7 @@
 		display: flex;
 		flex-direction: column;
 		align-items: center;
-		padding: 0.4rem;
+		padding: 0.25rem 0.4rem 0.4rem;
 		background: var(--bg-3);
 		border-radius: 6px;
 	}
@@ -801,5 +848,47 @@
 		font-size: 0.85rem;
 		font-weight: 600;
 		margin-top: 0.2rem;
+	}
+	.pin-btn {
+		align-self: flex-end;
+		display: flex;
+		align-items: center;
+		justify-content: center;
+		width: 1.25rem;
+		height: 1.25rem;
+		padding: 0;
+		margin-bottom: 0.1rem;
+		background: transparent;
+		border: none;
+		color: var(--muted);
+		opacity: 0.4;
+		border-radius: 3px;
+		cursor: pointer;
+		transition: opacity 0.12s, color 0.12s, background 0.12s;
+	}
+	.chord-card:hover .pin-btn {
+		opacity: 1;
+	}
+	.pin-btn:hover {
+		color: var(--accent);
+		background: var(--bg-2);
+	}
+	.pin-btn.pinned {
+		color: var(--accent);
+		opacity: 1;
+	}
+	.pinned-bar {
+		display: flex;
+		flex-wrap: wrap;
+		gap: 0.6rem;
+		padding: 0.6rem 0.8rem;
+		margin-top: 0.5rem;
+		background: var(--bg-2);
+		border: 1px solid var(--border);
+		border-radius: 8px;
+		box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+	}
+	.pinned-bar .chord-card {
+		min-width: 90px;
 	}
 </style>
