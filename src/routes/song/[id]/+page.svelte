@@ -623,7 +623,7 @@
 				{#each section.lines as line, li (li)}
 					{#if isLyricLine(line)}
 						{@const absIdx = flatLines.findIndex((f) => f.sectionIdx === si && f.lineIdx === li)}
-						{@const isCurrent = (hasTiming && playing) || tapSyncMode ? absIdx === currentIdx : false}
+						{@const isCurrent = (hasTiming && playing && playMode === 'along') || tapSyncMode ? absIdx === currentIdx : false}
 						<div class="line" class:current={isCurrent} data-abs={absIdx}>
 							<div class="chord-row">
 								{#each line.chords as c, ci (ci)}
