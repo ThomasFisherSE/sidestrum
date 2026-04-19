@@ -1,5 +1,5 @@
 import { json, type RequestHandler } from '@sveltejs/kit';
-import { fetchSong } from '$lib/server/gemini';
+import { fetchSong, ChordsNotFoundError } from '$lib/server/gemini';
 import { findByTitleArtist, saveSong } from '$lib/server/db';
 
 export const POST: RequestHandler = async ({ request }) => {
@@ -16,6 +16,16 @@ export const POST: RequestHandler = async ({ request }) => {
 		const saved = saveSong(fetched);
 		return json({ song: saved, cached: false });
 	} catch (e) {
+		if (e instanceof ChordsNotFoundError) {
+			return json(
+				{
+					error: e.message,
+					notFound: true,
+					triedUrls: e.detail?.triedUrls ?? []
+				},
+				{ status: 404 }
+			);
+		}
 		const message = e instanceof Error ? e.message : 'unknown error';
 		return json({ error: message }, { status: 500 });
 	}

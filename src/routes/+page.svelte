@@ -10,6 +10,8 @@
 	let searching = $state(false);
 	let fetchingIdx = $state<number | null>(null);
 	let error = $state<string | null>(null);
+	let notFoundIdx = $state<number | null>(null);
+	let notFoundMessage = $state<string | null>(null);
 
 	async function search() {
 		if (!query.trim()) return;
@@ -36,6 +38,8 @@
 	async function pickCandidate(c: SongCandidate, idx: number) {
 		fetchingIdx = idx;
 		error = null;
+		notFoundIdx = null;
+		notFoundMessage = null;
 		try {
 			const res = await fetch('/api/fetch-song', {
 				method: 'POST',
@@ -43,7 +47,15 @@
 				body: JSON.stringify({ title: c.title, artist: c.artist })
 			});
 			const body = await res.json();
-			if (!res.ok) throw new Error(body.error ?? 'fetch failed');
+			if (!res.ok) {
+				if (body.notFound) {
+					notFoundIdx = idx;
+					notFoundMessage = body.error ?? 'No chord chart found for this recording.';
+					fetchingIdx = null;
+					return;
+				}
+				throw new Error(body.error ?? 'fetch failed');
+			}
 			goto(`/song/${body.song.id}`);
 		} catch (e) {
 			error = e instanceof Error ? e.message : 'fetch failed';
@@ -66,6 +78,8 @@
 	function closeOverlay() {
 		candidates = null;
 		error = null;
+		notFoundIdx = null;
+		notFoundMessage = null;
 	}
 </script>
 
@@ -145,7 +159,9 @@
 									{#if c.note}<span class="note">{c.note}</span>{/if}
 								</div>
 								{#if fetchingIdx === i}
-									<span class="loading">Fetching chords…</span>
+									<span class="loading">Looking up chords…</span>
+								{:else if notFoundIdx === i && notFoundMessage}
+									<span class="not-found">⚠ {notFoundMessage}</span>
 								{/if}
 							</button>
 						</li>
@@ -311,5 +327,11 @@
 		margin-top: 0.4rem;
 		font-size: 0.8rem;
 		color: var(--accent);
+	}
+	.not-found {
+		display: block;
+		margin-top: 0.4rem;
+		font-size: 0.8rem;
+		color: var(--danger);
 	}
 </style>

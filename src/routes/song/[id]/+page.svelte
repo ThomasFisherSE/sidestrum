@@ -305,9 +305,16 @@
 				headers: { 'content-type': 'application/json' },
 				body: JSON.stringify({ title: song.title, artist: song.artist })
 			});
-			if (!res.ok) throw new Error('fetch failed');
-			const { song: newSong } = await res.json();
-			goto(`/song/${newSong.id}`, { replaceState: true, invalidateAll: true });
+			const body = await res.json();
+			if (!res.ok) {
+				const msg = body?.notFound
+					? `Couldn't find chords online: ${body.error}`
+					: `Refetch failed: ${body?.error ?? res.statusText}`;
+				alert(msg);
+				goto('/', { replaceState: true });
+				return;
+			}
+			goto(`/song/${body.song.id}`, { replaceState: true, invalidateAll: true });
 		} finally {
 			refetching = false;
 		}
